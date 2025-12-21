@@ -260,13 +260,52 @@ class DataverseExtractor:
         if exc_type is not None:
             print(f"Script finished with error: {exc_type.__name__}: {exc_val}")
 
+    def get_source_properties(self):
+        """
+        Query SourceProperties table to get list of entities to extract.
+        Returns None if table doesn't exist (use hardcoded entities instead).
+        """
+        try:
+            query = text(
+                f"""
+                SELECT [SourceName], [Active], [Order], [Last_FullLoad], [Columns], [Where]
+                FROM [{DB_SCHEMA}].[SourceProperties]
+                WHERE Active = 1
+                AND NOT CAST(ISNULL(Last_FullLoad, GETDATE() - 1) AS DATE) = CAST(GETDATE() AS DATE)
+                ORDER BY [Order], [SourceName]
+                """
+            )
+            df = pd.read_sql(query, con=self.engine.connect())
+            
+            if df.empty:
+                logger.info("No active entities found in SourceProperties table")
+                return None
+            
+            # Convert to list of dicts
+            entities = []
+            for _, row in df.iterrows():
+                entity = {
+                    "entity_name": row["SourceName"],
+                    "columns": row["Columns"].split(", ") if pd.notna(row["Columns"]) else None,
+                    "where_clause": row["Where"] if pd.notna(row["Where"]) else None
+                }
+                entities.append(entity)
+            
+            logger.info(f"Loaded {len(entities)} entities from SourceProperties table")
+            return entities
+            
+        except Exception as e:
+            logger.info(f"SourceProperties table not found or error: {e}")
+            return None
+
     @timeout(10800)  # 3 hour timeout
-    def main(self, entities_to_extract):
+    def main(self, entities_to_extract=None):
         """
         Main extraction process
         
         Args:
-            entities_to_extract: List of dicts with 'entity_name', 'columns' (optional), 'where_clause' (optional)
+            entities_to_extract: Optional list of dicts with 'entity_name', 'columns', 'where_clause'.
+                                If None, will try to load from SourceProperties table.
         """
         try:
             logger.info(f"{sys.argv[0]} started on: {socket.getfqdn()}")
@@ -283,6 +322,17 @@ class DataverseExtractor:
             # Validate configuration
             if not all([TENANT_ID, CLIENT_ID, CLIENT_SECRET, DATAVERSE_URL]):
                 raise ValueError("Missing required environment variables. Please set TENANT_ID, CLIENT_ID, CLIENT_SECRET, and DATAVERSE_URL")
+
+            # If no entities provided, try to load from SourceProperties table
+            if entities_to_extract is None:
+                logger.info("No entities provided, attempting to load from SourceProperties table...")
+                entities_to_extract = self.get_source_properties()
+                
+                if entities_to_extract is None:
+                    raise ValueError(
+                        "No entities to extract. Either provide entities parameter or create SourceProperties table. "
+                        "Run setup_config_table.sql to create the configuration table."
+                    )
 
             self.process_entities(entities_to_extract)
 
@@ -678,6 +728,22 @@ class DataverseExtractor:
                         f"{entity_name}: Uploaded final chunk {chunk_counter} ({len(df_chunk)} records, total: {total_records_processed})"
                     )
 
+            # Update Last_FullLoad timestamp if using config table
+            # Only update if SourceProperties table exists
+            try:
+                connection.execute(
+                    text(
+                        f"""UPDATE [{DB_SCHEMA}].[SourceProperties]
+                        SET Last_FullLoad = GETDATE()
+                        WHERE [SourceName] = :entity_name"""
+                    ),
+                    {"entity_name": entity_name},
+                )
+                logger.info(f"Updated Last_FullLoad timestamp for {entity_name}")
+            except Exception:
+                # Table might not exist if not using config-based approach
+                pass
+
             logger.info(
                 f"Transaction completed for {entity_name}. Total records: {total_records_processed}"
             )
@@ -808,21 +874,27 @@ class DataverseExtractor:
 
 
 if __name__ == "__main__":
-
-    entities_to_extract = [
-        {
-            "entity_name": "accounts",
-            "columns": ["accountid", "name", "emailaddress1"],
-            "where_clause": None
-        },
-        {
-            "entity_name": "contacts",
-            "columns": None,  # All columns
-            "where_clause": "statecode eq 0"  # Only active contacts
-        }
-    ]
+    # Two ways to use this script:
     
+    # Option 1: Load entities from SourceProperties SQL table (recommended)
+    # Run setup_config_table.sql first to create and populate the table
     with DataverseExtractor() as extractor:
-        exit_code = extractor.main(entities_to_extract)
+        exit_code = extractor.main()  # Will load from SourceProperties table
+    
+    # Option 2: Hardcode entities directly in script
+    # entities = [
+    #     {
+    #         "entity_name": "accounts",
+    #         "columns": ["accountid", "name", "emailaddress1"],
+    #         "where_clause": None
+    #     },
+    #     {
+    #         "entity_name": "contacts",
+    #         "columns": None,  # All columns
+    #         "where_clause": "statecode eq 0"  # Only active contacts
+    #     }
+    # ]
+    # with DataverseExtractor() as extractor:
+    #     exit_code = extractor.main(entities)
 
     os._exit(exit_code)

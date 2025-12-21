@@ -74,45 +74,91 @@ export DB_POOL_RECYCLE="3600"             # Recycle connections after seconds (d
 
 ## Usage
 
-### Basic Example
+The script supports two modes of operation:
 
-```python
-from dataverse_extract import DataverseExtractor
+### Option 1: SQL Configuration Table (Recommended)
 
-# Define entities to extract
-entities = [
-    {
-        "entity_name": "accounts",
-        "columns": ["accountid", "name", "emailaddress1"],
-        "where_clause": None
-    },
-    {
-        "entity_name": "contacts",
-        "columns": None,  # Extract all columns
-        "where_clause": "statecode eq 0"  # Only active contacts
-    }
-]
+Use a SQL table to manage which entities to extract. This is the recommended approach for production use.
 
-# Run extraction
-with DataverseExtractor() as extractor:
-    exit_code = extractor.main(entities)
+**Step 1: Create configuration table**
+
+```bash
+# Run the setup script to create SourceProperties table
+sqlcmd -S your-server -d your-database -i setup_config_table.sql
 ```
 
-### Advanced Example with Filtering
+This creates a `SourceProperties` table with example data:
+
+| SourceName | Active | Order | Columns | Where | Last_FullLoad |
+|------------|--------|-------|---------|-------|---------------|
+| accounts | 1 | 1 | accountid, name, emailaddress1 | NULL | NULL |
+| contacts | 1 | 2 | contactid, firstname, lastname | statecode eq 0 | NULL |
+
+**Step 2: Run extraction**
+
+```bash
+python dataverse_extract.py
+```
+
+The script will:
+- Query `SourceProperties` for active entities
+- Extract data from Dataverse
+- Load into SQL tables (creates tables automatically if needed)
+- Update `Last_FullLoad` timestamp after successful extraction
+- Skip entities where `Last_FullLoad` is today (prevents duplicate runs)
+
+**Managing entities in SQL:**
+
+```sql
+-- Add new entity
+INSERT INTO [dbo].[SourceProperties] (SourceName, Active, [Order], Columns, [Where])
+VALUES ('opportunities', 1, 10, 'opportunityid, name, estimatedvalue', 'statecode eq 0')
+
+-- Disable an entity
+UPDATE [dbo].[SourceProperties] SET Active = 0 WHERE SourceName = 'orders'
+
+-- Reset Last_FullLoad to force re-extraction
+UPDATE [dbo].[SourceProperties] SET Last_FullLoad = NULL WHERE SourceName = 'accounts'
+
+-- View active entities
+SELECT SourceName, [Order], Columns, [Where], Last_FullLoad
+FROM [dbo].[SourceProperties]
+WHERE Active = 1
+ORDER BY [Order]
+```
+
+### Option 2: Hardcoded Entities
+
+For testing or one-off extractions, you can hardcode entities directly in the script.
+
+**Edit `dataverse_extract.py`:**
 
 ```python
-entities = [
-    {
-        "entity_name": "opportunities",
-        "columns": ["opportunityid", "name", "estimatedvalue", "closedate"],
-        "where_clause": "estimatedvalue gt 10000 and statecode eq 0"
-    },
-    {
-        "entity_name": "orders",
-        "columns": ["orderid", "name", "totalamount"],
-        "where_clause": "createdon ge 2024-01-01"
-    }
-]
+if __name__ == "__main__":
+    # Define entities directly
+    entities = [
+        {
+            "entity_name": "accounts",
+            "columns": ["accountid", "name", "emailaddress1"],
+            "where_clause": None
+        },
+        {
+            "entity_name": "contacts",
+            "columns": None,  # Extract all columns
+            "where_clause": "statecode eq 0"  # Only active contacts
+        }
+    ]
+    
+    with DataverseExtractor() as extractor:
+        exit_code = extractor.main(entities)
+    
+    os._exit(exit_code)
+```
+
+**Run:**
+
+```bash
+python dataverse_extract.py
 ```
 
 ## OData Filter Examples
@@ -241,8 +287,8 @@ The script includes comprehensive error handling:
 
 ```
 data-pipeline/
-├── dataverse_extract.py          # Main extraction script (generic)
-├── Extract_dataverse_to_table.py # Original work-specific version
+├── dataverse_extract.py          # Main extraction script
+├── setup_config_table.sql        # SQL script to create SourceProperties table
 ├── Module/
 │   ├── Connection_pool.py        # SQLAlchemy connection pooling
 │   └── Functions.py              # Utility functions (timeout decorator)
