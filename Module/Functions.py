@@ -1,35 +1,44 @@
-"""
-Utility functions for data pipeline
-"""
 
-import signal
-from functools import wraps
+import functools
+from threading import Thread
 
 
-def timeout(seconds):
+
+
+def timeout(seconds_before_timeout):
     """
-    Decorator to add timeout to functions
-    
-    Usage:
-        @timeout(300)  # 5 minutes
-        def my_function():
-            pass
-    """
-    def decorator(func):
-        def _handle_timeout(signum, frame):
-            raise TimeoutError(f"Function {func.__name__} timed out after {seconds} seconds")
+    Docstring: Timeout decorator/wrapper function. The timeout is specified when applying it to a function, e.g. @timeout(600) — the number is in seconds. 
 
-        @wraps(func)
+    """
+
+    def deco(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            # Set the signal handler and alarm
-            signal.signal(signal.SIGALRM, _handle_timeout)
-            signal.alarm(seconds)
+            res = [
+                Exception(
+                    "function [%s] timeout [%s seconds] exceeded!"
+                    % (func.__name__, seconds_before_timeout)
+                )
+            ]
+
+            def newFunc():
+                try:
+                    res[0] = func(*args, **kwargs)
+                except Exception as e:
+                    res[0] = e
+
+            t = Thread(target=newFunc, daemon=True)
             try:
-                result = func(*args, **kwargs)
-            finally:
-                # Disable the alarm
-                signal.alarm(0)
-            return result
+                t.start()
+                t.join(seconds_before_timeout)
+            except Exception as e:
+                print("error starting thread")
+                raise e
+            ret = res[0]
+            if isinstance(ret, BaseException):
+                raise ret
+            return ret
 
         return wrapper
-    return decorator
+
+    return deco
