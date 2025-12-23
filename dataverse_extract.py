@@ -1,3 +1,9 @@
+# Data Pipeline - Dataverse Extract Script
+# Created by: Gustav Christensen
+# Date: December 2025
+# Description: Production-ready script for extracting data from Microsoft Dataverse and loading into SQL Server.
+#              Features connection pooling, circuit breakers, rate limiting, and parallel processing.
+
 """
 Dataverse to SQL Database Extract Script
 

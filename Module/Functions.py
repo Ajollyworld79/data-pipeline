@@ -1,3 +1,7 @@
+# Data Pipeline - Utility Functions Module
+# Created by: Gustav Christensen
+# Date: December 2025
+# Description: Common utility functions including timeout decorator for long-running operations.
 
 import functools
 from threading import Thread

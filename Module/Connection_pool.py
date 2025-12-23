@@ -1,3 +1,8 @@
+# Data Pipeline - SQL Connection Pool Module
+# Created by: Gustav Christensen
+# Date: December 2025
+# Description: SQLAlchemy-based connection pooling for efficient database connections.
+
 """
 Simple SQL Connection Pool using SQLAlchemy
 

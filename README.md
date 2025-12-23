@@ -1,6 +1,10 @@
-# Dataverse to SQL Extract Pipeline
+# Data Pipeline - ETL Scripts
 
-Production-ready Python script for extracting data from Microsoft Dataverse and loading it into SQL Server. Features connection pooling, circuit breakers, rate limiting, and parallel processing for efficient and reliable data extraction.
+Production-ready Python scripts for extracting, transforming, and loading data. Includes:
+- **dataverse_extract.py**: Extract from Microsoft Dataverse to SQL Server
+- **Transform_load.py**: Generate fake data with Faker, transform, and load to SQL
+
+The Transform_load.py script is useful for testing and development before production data from Dataverse is available.
 
 ## Features
 
@@ -19,8 +23,8 @@ Production-ready Python script for extracting data from Microsoft Dataverse and 
 
 - Python 3.11+
 - Microsoft SQL Server with ODBC Driver 17+
-- Azure AD application with Dataverse API permissions
-- Access to Microsoft Dataverse environment
+- Azure AD application with Dataverse API permissions (for dataverse_extract.py only)
+- Access to Microsoft Dataverse environment (for dataverse_extract.py only)
 
 ## Installation
 
@@ -72,7 +76,46 @@ export DB_POOL_TIMEOUT="30"               # Connection timeout in seconds (defau
 export DB_POOL_RECYCLE="3600"             # Recycle connections after seconds (default: 1 hour)
 ```
 
-## Usage
+## Scripts Overview
+
+### Transform_load.py - Testing with Fake Data
+
+This script generates fake data using the Faker library, transforms it, and loads it into SQL Server. It's perfect for:
+- Testing the pipeline before production Dataverse data is available
+- Development and debugging
+- Demo environments
+- Load testing
+
+**Features:**
+- Generates realistic fake data for Customers, Orders, and Products
+- Performs data transformations (calculations, cleaning, standardization)
+- Automatically creates SQL tables with appropriate data types
+- Loads data in chunks for efficient processing
+
+**Configuration:**
+```bash
+export NUM_RECORDS="1000"      # Number of records to generate (default: 1000)
+export DB_SCHEMA="dbo"         # SQL schema for tables (default: dbo)
+```
+
+**Run:**
+```bash
+python Transform_load.py
+```
+
+**Generated Tables:**
+- `FakeCustomers` - Customer data with demographics and contact info
+- `FakeOrders` - Order data with pricing, discounts, and shipping
+- `FakeProducts` - Product catalog with pricing and inventory
+
+**Sample Transformations:**
+- Customer: Full name generation, email standardization, age calculation
+- Orders: Subtotal/discount/shipping calculations, order age
+- Products: Profit margin, markup percentage, stock categorization
+
+---
+
+### dataverse_extract.py - Production Data Extraction
 
 The script supports two modes of operation:
 
@@ -287,7 +330,8 @@ The script includes comprehensive error handling:
 
 ```
 data-pipeline/
-├── dataverse_extract.py          # Main extraction script
+├── dataverse_extract.py          # Production extraction from Dataverse to SQL
+├── Transform_load.py             # Test script with fake data generation
 ├── setup_config_table.sql        # SQL script to create SourceProperties table
 ├── Module/
 │   ├── Connection_pool.py        # SQLAlchemy connection pooling
