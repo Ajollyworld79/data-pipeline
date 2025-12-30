@@ -119,7 +119,7 @@ class CircuitBreaker:
 
 def rate_limit_decorator(min_interval=RATE_LIMIT_INTERVAL):
     """Rate limiting decorator to limit API call frequency"""
-    last_call = {"time": 0}
+    last_call = {"time": 0.0}
     lock = Lock()
 
     def decorator(func):
@@ -179,9 +179,9 @@ class TokenCache:
     def get_token(self, tenant_id, client_id, client_secret):
         with self._lock:
             current_time = datetime.now()
-            if self._token is None or current_time >= self._expiry - timedelta(
+            if self._token is None or (self._expiry is not None and current_time >= self._expiry - timedelta(
                 minutes=5
-            ):
+            )):
                 self._refresh_token(tenant_id, client_id, client_secret)
             return self._token
 
@@ -692,9 +692,10 @@ class DataverseExtractor:
                 f"Table {entity_name}: Column {col} not found in SQL table. Dropping."
             )
 
-        sql_types = {
-            col: String(100) for col in column_info.keys() if col != "AuditDate"
-        }
+        sql_types = {}
+        for col in column_info.keys():
+            if col != "AuditDate":
+                sql_types[col] = String(100)
         sql_types["AuditDate"] = DateTime()
 
         chunk = [first_item]
